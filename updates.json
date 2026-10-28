@@ -1,0 +1,18 @@
+{
+  "addons": {
+    "dualtran@seigwen.dev": {
+      "updates": [
+        {
+          "version": "0.1.2",
+          "update_link": "https://github.com/seigwen/dualtran-zotero/releases/download/v0.1.2/dualtran-zotero.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "7.0",
+              "strict_max_version": "10.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
