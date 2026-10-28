@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "DualTran Translate",
+  "version": "0.1.0",
+  "description": "Translate an item's title and abstract into a child note, keeping the source. Google works without a key; any OpenAI-compatible endpoint works with your own key.",
+  "homepage_url": "https://github.com/seigwen/dualtran-zotero",
+  "author": "seigwen",
+  "applications": {
+    "zotero": {
+      "id": "dualtran@seigwen.dev",
+      "strict_min_version": "7.0"
+    }
+  }
+}
