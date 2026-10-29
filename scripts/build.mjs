@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, "dualtran-zotero.xpi");
-const files = ["manifest.json", "bootstrap.js", "prefs.js", "content"];
+const files = ["manifest.json", "bootstrap.js", "prefs.js", "content", "locales"];
 
 for (const file of files) {
   if (!existsSync(resolve(root, file))) {

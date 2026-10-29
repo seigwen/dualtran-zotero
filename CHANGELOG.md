@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0
+
+### Added
+
+- Translate text selected in the PDF/EPUB reader from the selection popup: **Highlight**
+  (annotation with the translation as comment), **Sticky** (sticky note below the last selected
+  line, PDF only), and **Note** (child note with the quoted selection and the translation).
+- **Tools → DualTran** submenu with four item actions: child note (existing behaviour), replace
+  title and abstract (with confirmation and a backup note), append the translation to the
+  abstract, and create a translated copy linked by a two-way *Related* relation.
+- 38-language interface (English, Simplified and Traditional Chinese handwritten; the rest
+  machine-translated and guarded by tests).
+
+### Changed
+
+- The single “DualTran: translate title and abstract” Tools entry became the **DualTran** submenu.
+
+### Fixed
+
+- The replace confirmation uses Zotero's prompt wrapper, so it reports the exact item count and
+  keeps a backup note before touching the metadata.
+
 ## 0.1.4
 
 ### Fixed

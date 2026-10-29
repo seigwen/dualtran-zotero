@@ -192,4 +192,102 @@ describe("selection hint", () => {
   it("stays quiet when something can be translated", () => {
     expect(core.selectionHint([{ id: 1, isRegularItem: () => true, parentItemID: false }])).toBe(null);
   });
+
+  it("returns stable codes for the UI to localise", () => {
+    expect(core.selectionProblem([])).toBe("empty");
+    expect(core.selectionProblem([{ isRegularItem: () => false, isNote: () => true, parentItemID: false }])).toBe(
+      "standalone-note"
+    );
+    expect(core.selectionProblem([{ isRegularItem: () => false, isNote: () => false, parentItemID: false }])).toBe(
+      "no-parent"
+    );
+    expect(core.selectionProblem([{ id: 1, isRegularItem: () => true, parentItemID: false }])).toBe(null);
+  });
+});
+
+describe("annotation building", () => {
+  const selection = {
+    text: "Attention is all you need",
+    pageLabel: "1",
+    sortIndex: "00001|000001",
+    position: { pageIndex: 0, rects: [[100, 700, 300, 712]] },
+  };
+
+  it("builds a highlight annotation with the translation as comment", () => {
+    const json = core.buildAnnotation(selection, "注意力就是你所需要的一切", "highlight", { key: "ABCD2345" });
+    expect(json.type).toBe("highlight");
+    expect(json.text).toBe(selection.text);
+    expect(json.comment).toBe("注意力就是你所需要的一切");
+    expect(json.key).toBe("ABCD2345");
+    expect(json.position).toBe(selection.position);
+    expect(json.pageLabel).toBe("1");
+  });
+
+  it("builds a sticky note below the last selected line", () => {
+    const json = core.buildAnnotation(selection, "译文", "sticky", { key: "ABCD2345" });
+    expect(json.type).toBe("note");
+    expect(json.text).toBeUndefined();
+    expect(json.position.rects).toEqual([[100, 688, 112, 700]]);
+    expect(json.position.pageIndex).toBe(0);
+  });
+
+  it("uses the reader's key when it provides one", () => {
+    const json = core.buildAnnotation({ ...selection, key: "READER01" }, "译文", "highlight", {
+      key: "OTHER123",
+    });
+    expect(json.key).toBe("READER01");
+  });
+
+  it("refuses a selection without text or position", () => {
+    expect(() => core.buildAnnotation({}, "译文", "highlight", { key: "K" })).toThrow(/no selected text/);
+    expect(() => core.buildAnnotation(selection, "", "highlight", { key: "K" })).toThrow(/empty/);
+    expect(() =>
+      core.buildAnnotation({ text: "x", position: {} }, "译", "sticky", { key: "K" })
+    ).toThrow(/no position/);
+  });
+});
+
+describe("item action payloads", () => {
+  const fields = { title: "Attention Is All You Need", abstractText: "We propose the Transformer." };
+  const translation = { title: "注意力就是你所需要的一切", abstract: "我们提出了 Transformer。" };
+
+  it("appends a plain-text block and keeps the original abstract", () => {
+    const text = core.buildAppendText(fields.abstractText, translation.title, translation.abstract, "zh-CN");
+    expect(text.startsWith(fields.abstractText + "\n\n")).toBe(true);
+    expect(text).toContain("[DualTran · zh-CN]");
+    expect(text).toContain("Title: 注意力就是你所需要的一切");
+    expect(text).toContain("我们提出了 Transformer。");
+  });
+
+  it("handles an empty abstract when appending", () => {
+    const text = core.buildAppendText("", translation.title, "", "zh-CN");
+    expect(text.startsWith("[DualTran · zh-CN]")).toBe(true);
+    expect(text).toContain("Title: 注意力就是你所需要的一切");
+  });
+
+  it("writes a backup note with escaped originals", () => {
+    const html = core.buildBackupNote(
+      { title: "A <b>title</b>", abstractText: "Abstract & more" },
+      "zh-CN",
+      "2026-10-29 10:00 UTC"
+    );
+    expect(html).toContain("A &lt;b&gt;title&lt;/b&gt;");
+    expect(html).toContain("Abstract &amp; more");
+    expect(html).toContain("2026-10-29 10:00 UTC");
+    expect(html).toContain("zh-CN");
+  });
+
+  it("builds the fields of a translated copy", () => {
+    expect(core.buildTranslatedItemFields(fields, translation, "zh-CN")).toEqual({
+      title: "注意力就是你所需要的一切",
+      abstractNote: "我们提出了 Transformer。",
+      language: "zh-CN",
+    });
+  });
+
+  it("falls back to the original title when the translation is empty", () => {
+    expect(core.buildTranslatedItemFields(fields, { title: "", abstract: "" }, "zh-CN").title).toBe(
+      fields.title
+    );
+  });
 });

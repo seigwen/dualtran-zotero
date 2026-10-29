@@ -184,7 +184,10 @@
   }
 
   /** Build the HTML body of the child note: source first, translation underneath. */
-  function buildNoteHtml(title, abstractText, translatedTitle, translatedAbstract) {
+  function buildNoteHtml(title, abstractText, translatedTitle, translatedAbstract, labels) {
+    labels = labels || {};
+    const originalLabel = labels.originalAbstract || "Original abstract";
+    const translationLabel = labels.translation || "Translation";
     const escape = function (value) {
       return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     };
@@ -194,10 +197,21 @@
       if (translatedTitle) parts.push("<h2>" + escape(translatedTitle) + "</h2>");
     }
     if (abstractText) {
-      parts.push("<h3>Original abstract</h3><p>" + escape(abstractText) + "</p>");
-      if (translatedAbstract) parts.push("<h3>Translation</h3><p>" + escape(translatedAbstract) + "</p>");
+      parts.push("<h3>" + escape(originalLabel) + "</h3><p>" + escape(abstractText) + "</p>");
+      if (translatedAbstract) {
+        parts.push("<h3>" + escape(translationLabel) + "</h3><p>" + escape(translatedAbstract) + "</p>");
+      }
     }
     return parts.join("\n");
+  }
+
+  /** Note body for a text selected in the reader: quote first, translation underneath. */
+  function buildSelectionNote(selectionText, translation) {
+    const escape = function (value) {
+      return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    };
+    if (!selectionText) throw new Error("There is no selected text");
+    return "<blockquote><p>" + escape(selectionText) + "</p></blockquote>\n<p>" + escape(translation) + "</p>";
   }
 
   /**
@@ -260,6 +274,129 @@
     );
   }
 
+  /**
+   * Explain why a selection has nothing to translate, as a stable code the UI can localise.
+   * Returns null when the selection contains a regular item (or a child that resolves to one).
+   *
+   * @returns {null | "empty" | "standalone-note" | "no-parent"}
+   */
+  function selectionProblem(items) {
+    const list = items || [];
+    if (!list.length) return "empty";
+
+    const translatable = list.some(function (item) {
+      return item && (item.isRegularItem() || item.parentItemID);
+    });
+    if (translatable) return null;
+
+    const onlyNotes = list.every(function (item) {
+      return item && typeof item.isNote === "function" && item.isNote();
+    });
+    return onlyNotes ? "standalone-note" : "no-parent";
+  }
+
+  /**
+   * Build the position of a sticky-note annotation placed just below the last line of a
+   * selection. PDF coordinates have the origin at the bottom left, so "below" subtracts.
+   */
+  function notePosition(position, size) {
+    if (typeof position === "string") {
+      try {
+        position = JSON.parse(position);
+      } catch (error) {
+        throw new Error("Cannot place a sticky note: the selection position is invalid");
+      }
+    }
+    if (!position || !Array.isArray(position.rects) || !position.rects.length) {
+      throw new Error("Cannot place a sticky note: the selection has no position");
+    }
+    const rects = position.rects;
+    const last = rects[rects.length - 1];
+    const height = Math.max(last[3] - last[1], size || 12);
+    return Object.assign({}, position, {
+      rects: [[last[0], last[1] - height, last[0] + height, last[1]]],
+    });
+  }
+
+  /**
+   * Build the annotation JSON consumed by Zotero.Annotations.saveFromJSON().
+   *
+   * @param {Object} annotation the reader's selection annotation (params.annotation)
+   * @param {string} translation translated text
+   * @param {"highlight"|"sticky"} mode
+   * @param {{key?: string, color?: string, generateKey?: Function}} [options]
+   */
+  function buildAnnotation(annotation, translation, mode, options) {
+    options = options || {};
+    if (!annotation || !annotation.text) throw new Error("There is no selected text to annotate");
+    if (!translation || !String(translation).trim()) throw new Error("The translation is empty");
+
+    const type = mode === "sticky" ? "note" : "highlight";
+    const key = annotation.key || options.key || (options.generateKey ? options.generateKey() : "");
+    if (!key) throw new Error("Cannot create an annotation without a key");
+
+    let position = annotation.position;
+    if (typeof position === "string") {
+      try {
+        position = JSON.parse(position);
+      } catch (error) {
+        throw new Error("Cannot create an annotation: the selection position is invalid");
+      }
+    }
+
+    return {
+      key: key,
+      type: type,
+      text: type === "highlight" ? annotation.text : undefined,
+      comment: translation,
+      color: options.color || "#2ea8e5",
+      pageLabel: annotation.pageLabel,
+      sortIndex: annotation.sortIndex,
+      position: type === "note" ? notePosition(position, options.noteSize) : position,
+    };
+  }
+
+  /** Append a plain-text translation block to the item's abstract (which is not HTML). */
+  function buildAppendText(originalAbstract, translatedTitle, translatedAbstract, target, labels) {
+    labels = labels || {};
+    const heading = (labels.heading || "[DualTran · {target}]").replace("{target}", target);
+    const titleLabel = labels.title || "Title:";
+    const base = String(originalAbstract || "").trimEnd();
+    const block = [heading];
+    if (translatedTitle) block.push(titleLabel + " " + translatedTitle);
+    if (translatedAbstract) block.push("", translatedAbstract);
+    return base ? base + "\n\n" + block.join("\n") : block.join("\n");
+  }
+
+  /** Child note that preserves the metadata replaced by the “replace” action. */
+  function buildBackupNote(fields, target, savedAt, labels) {
+    labels = labels || {};
+    const escape = function (value) {
+      return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    };
+    const saved = (labels.saved || "Saved {date} · target {target}")
+      .replace("{date}", savedAt)
+      .replace("{target}", target);
+    const parts = ["<h2>" + escape(labels.heading || "DualTran backup — original metadata") + "</h2>"];
+    parts.push("<p><strong>" + escape(labels.title || "Title") + ":</strong> " + escape(fields.title) + "</p>");
+    if (fields.abstractText) {
+      parts.push(
+        "<p><strong>" + escape(labels.abstract || "Abstract") + ":</strong> " + escape(fields.abstractText) + "</p>"
+      );
+    }
+    parts.push("<p><em>" + escape(saved) + "</em></p>");
+    return parts.join("\n");
+  }
+
+  /** Fields for a translated copy of an item (no attachments, no notes). */
+  function buildTranslatedItemFields(fields, translation, target) {
+    return {
+      title: translation.title || fields.title,
+      abstractNote: translation.abstract || fields.abstractText || "",
+      language: target,
+    };
+  }
+
   const api = {
     PREF_PREFIX: PREF_PREFIX,
     LEGACY_PREFIX: LEGACY_PREFIX,
@@ -275,8 +412,15 @@
     chunkLimitFor: chunkLimitFor,
     chunkText: chunkText,
     buildNoteHtml: buildNoteHtml,
+    buildSelectionNote: buildSelectionNote,
     resolveTargets: resolveTargets,
     selectionHint: selectionHint,
+    selectionProblem: selectionProblem,
+    notePosition: notePosition,
+    buildAnnotation: buildAnnotation,
+    buildAppendText: buildAppendText,
+    buildBackupNote: buildBackupNote,
+    buildTranslatedItemFields: buildTranslatedItemFields,
   };
 
   root.DualTranCore = api;
