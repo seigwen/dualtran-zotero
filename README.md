@@ -17,7 +17,9 @@ This add-on is independent of the DualTran browser extension; it keeps its own s
 ## Install
 
 1. Download `dualtran-zotero.xpi` from the [latest release](https://github.com/seigwen/dualtran-zotero/releases/latest).
-2. In Zotero: **Tools → Add-ons → ⚙ → Install Add-on From File…**, pick the `.xpi`.
+2. Install it from the plugin manager:
+   - **Zotero 10:** Tools → **Plugins** → ⚙ → **Install Plugin From File…**
+   - **Zotero 7–9:** Tools → **Add-ons** → ⚙ → **Install Add-on From File…**
 3. Restart Zotero. The entry appears under **Tools → “DualTran: translate title and abstract”**.
 
 Zotero 10 refuses add-ons that do not declare an update manifest; this one does, so future
@@ -48,7 +50,7 @@ The default target language is Simplified Chinese (`zh-CN`). See below to change
 
 There is no preference pane yet. Settings live in Zotero's Config Editor:
 
-**Settings → Advanced → Config Editor** (Zotero 7: **Edit → Settings → Advanced → Config Editor**).
+**Edit → Settings → Advanced → Config Editor** (macOS: **Zotero → Settings**).
 
 Search for `extensions.zotero.dualtran` — the defaults are registered by the add-on, so every key
 below is already listed with its default value. Edit a row in place; the next run picks the value
@@ -95,9 +97,9 @@ documented for it were ignored. On first start, 0.1.3 copies any root-level sett
 
 ## Troubleshooting
 
-- **The Tools entry is missing.** Check that the add-on is enabled in Tools → Add-ons and restart
-  Zotero. For diagnosis, enable **Help → Debug Output Logging → View Output** and search for
-  `DualTran:`; startup logs the version and the pref namespace.
+- **The Tools entry is missing.** Check that the add-on is enabled in Tools → Plugins (Add-ons in
+  Zotero 7–9) and restart Zotero. For diagnosis, enable **Help → Debug Output Logging → View
+  Output** and search for `DualTran:`; startup logs the version and the pref namespace.
 - **“Unknown engine …”.** `engine` must be exactly `google` or `ai`.
 - **HTTP 401 / 403.** Wrong or missing `apiKey` for the selected endpoint.
 - **HTTP 404.** Usually a wrong `endpoint` or `model`; check the provider's base URL.
