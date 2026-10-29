@@ -171,3 +171,25 @@ describe("selection", () => {
     expect(core.resolveTargets([child(1, false)], () => null)).toEqual([]);
   });
 });
+
+describe("selection hint", () => {
+  it("explains an empty selection", () => {
+    expect(core.selectionHint([])).toMatch(/item list/);
+  });
+
+  it("explains that a standalone note is not translated", () => {
+    const note = { isRegularItem: () => false, isNote: () => true, parentItemID: false };
+    const hint = core.selectionHint([note]);
+    expect(hint).toMatch(/standalone note/);
+    expect(hint).toMatch(/does not translate note text/);
+  });
+
+  it("explains an attachment without a parent record", () => {
+    const attachment = { isRegularItem: () => false, isNote: () => false, parentItemID: false };
+    expect(core.selectionHint([attachment])).toMatch(/parent record/);
+  });
+
+  it("stays quiet when something can be translated", () => {
+    expect(core.selectionHint([{ id: 1, isRegularItem: () => true, parentItemID: false }])).toBe(null);
+  });
+});

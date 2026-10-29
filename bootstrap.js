@@ -120,14 +120,12 @@ async function translateSelected(win) {
   if (running) return;
 
   const pane = (win && win.ZoteroPane) || Zotero.getActiveZoteroPane();
-  const items = DualTranCore.resolveTargets(pane.getSelectedItems(), function (id) {
+  const selected = pane.getSelectedItems();
+  const items = DualTranCore.resolveTargets(selected, function (id) {
     return Zotero.Items.get(id);
   });
   if (!items.length) {
-    alertUser(
-      win,
-      "Select at least one item first. A PDF or note attached to a record is fine — it resolves to its parent item."
-    );
+    alertUser(win, DualTranCore.selectionHint(selected) || "Nothing to translate in this selection.");
     return;
   }
 

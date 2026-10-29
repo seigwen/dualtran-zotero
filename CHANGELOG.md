@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.4
+
+### Fixed
+
+- The “nothing to translate” dialog now explains the actual cause: an empty selection, a
+  standalone note (notes have no parent item and note text is not translated), or an attachment
+  without a parent record. Selecting text inside a note previously produced a misleading
+  “Select at least one item first” message.
+
 ## 0.1.3
 
 ### Fixed

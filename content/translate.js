@@ -226,6 +226,40 @@
     return targets;
   }
 
+  /**
+   * Explain why a selection produced nothing to translate. Returns null when the selection
+   * contains at least one regular item (or a child that can resolve to one).
+   */
+  function selectionHint(items) {
+    const list = items || [];
+    if (!list.length) {
+      return (
+        "Select an item in the item list first — this command translates the selected item's " +
+        "title and abstract into a child note."
+      );
+    }
+
+    const translatable = list.some(function (item) {
+      return item && (item.isRegularItem() || item.parentItemID);
+    });
+    if (translatable) return null;
+
+    const onlyNotes = list.every(function (item) {
+      return item && typeof item.isNote === "function" && item.isNote();
+    });
+    if (onlyNotes) {
+      return (
+        "A standalone note has no parent item, and this command does not translate note text. " +
+        "Select the paper (or its PDF) in the item list; its title and abstract are translated " +
+        "into a child note."
+      );
+    }
+    return (
+      "The selected item has no parent record. Select a library item such as a paper, or an " +
+      "attachment that belongs to one."
+    );
+  }
+
   const api = {
     PREF_PREFIX: PREF_PREFIX,
     LEGACY_PREFIX: LEGACY_PREFIX,
@@ -242,6 +276,7 @@
     chunkText: chunkText,
     buildNoteHtml: buildNoteHtml,
     resolveTargets: resolveTargets,
+    selectionHint: selectionHint,
   };
 
   root.DualTranCore = api;

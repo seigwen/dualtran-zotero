@@ -41,6 +41,10 @@ H3  Translation
     translated abstract
 ```
 
+The command works on the **item-list selection**. It does not translate text selected inside the
+note editor: a standalone note has no parent item, so nothing is translated and the add-on tells
+you to pick the paper instead.
+
 The command runs item by item. A failure on one item does not stop the rest; failures are
 collected and shown once at the end.
 
@@ -89,6 +93,8 @@ documented for it were ignored. On first start, 0.1.3 copies any root-level sett
 ## What it does not do
 
 - It does not translate PDF full text — only the item's title and abstract fields.
+- It does not translate note text or an arbitrary selection inside the editor; the command always
+  reads the item selected in the item list.
 - It does not update an existing note. Every run creates a new child note, so running it twice on
   the same item produces two notes; delete the one you do not want.
 - Items with neither a title nor an abstract are skipped silently (a line goes to the debug log).
@@ -119,7 +125,7 @@ add-on makes no other network requests.
 
 ```bash
 npm install
-npm test        # vitest: 28 unit tests over the translation core
+npm test        # vitest: 32 unit tests over the translation core
 npm run build   # writes dualtran-zotero.xpi
 ```
 
