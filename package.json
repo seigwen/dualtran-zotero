@@ -1,17 +1,22 @@
 {
   "name": "dualtran-zotero",
-  "version": "1.0.0",
-  "description": "",
+  "version": "0.1.3",
+  "description": "Zotero add-on that translates an item's title and abstract into a child note, keeping the source.",
   "main": "bootstrap.js",
   "directories": {
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "build": "node scripts/build.mjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "zotero",
+    "translation",
+    "dualtran"
+  ],
+  "author": "seigwen",
+  "license": "MPL-2.0",
   "devDependencies": {
     "vitest": "^5.0.5"
   }

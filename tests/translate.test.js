@@ -58,4 +58,116 @@ describe("note html", () => {
     expect(html.indexOf("Translation")).toBeGreaterThan(-1);
     expect(html.indexOf("摘要")).toBeGreaterThan(-1);
   });
+  it("omits the heading when an item has no title", () => {
+    const html = core.buildNoteHtml("", "An abstract", "", "一段摘要");
+    expect(html).not.toContain("<h1></h1>");
+    expect(html).toContain("Original abstract");
+    expect(html).toContain("一段摘要");
+  });
+});
+
+const PREF = "extensions.zotero.dualtran.";
+
+describe("preferences", () => {
+  it("reads every key from the scoped Zotero namespace", () => {
+    const seen = [];
+    const config = core.readConfig((key) => {
+      seen.push(key);
+      if (key === PREF + "engine") return "ai";
+      if (key === PREF + "model") return "deepseek-chat";
+      return undefined;
+    });
+    expect(seen).toEqual(
+      expect.arrayContaining([
+        PREF + "engine",
+        PREF + "target",
+        PREF + "endpoint",
+        PREF + "apiKey",
+        PREF + "model",
+        PREF + "timeout",
+      ])
+    );
+    expect(config.engine).toBe("ai");
+    expect(config.model).toBe("deepseek-chat");
+    expect(config.target).toBe("zh-CN");
+    expect(config.endpoint).toBe("https://api.openai.com/v1");
+    expect(config.timeout).toBe(120000);
+  });
+
+  it("normalises the engine name and refuses an unknown one", () => {
+    expect(core.readConfig((key) => (key === PREF + "engine" ? " AI " : undefined)).engine).toBe("ai");
+    expect(() => core.readConfig((key) => (key === PREF + "engine" ? "deepl" : undefined))).toThrow(
+      /Unknown engine/
+    );
+  });
+
+  it("falls back to the default timeout when the pref is nonsense", () => {
+    expect(core.readConfig((key) => (key === PREF + "timeout" ? "abc" : undefined)).timeout).toBe(120000);
+    expect(core.readConfig((key) => (key === PREF + "timeout" ? 5000 : undefined)).timeout).toBe(5000);
+  });
+});
+
+describe("legacy pref migration", () => {
+  function store(entries) {
+    const map = new Map(entries);
+    return {
+      map,
+      hasUserValue: (key) => map.has(key),
+      get: (key) => map.get(key),
+      set: (key, value) => map.set(key, value),
+      clear: (key) => map.delete(key),
+    };
+  }
+
+  it("copies root-level 0.1.2 prefs into the scoped namespace once", () => {
+    const io = store([
+      ["dualtran.engine", "ai"],
+      ["dualtran.model", "deepseek-chat"],
+    ]);
+    expect(core.migrateLegacyPrefs(io)).toEqual(["engine", "model"]);
+    expect(io.map.get(PREF + "engine")).toBe("ai");
+    expect(io.map.has("dualtran.engine")).toBe(false);
+    expect(core.migrateLegacyPrefs(io)).toEqual([]);
+  });
+
+  it("never overwrites a value the user already set in the scoped namespace", () => {
+    const io = store([
+      ["dualtran.engine", "ai"],
+      [PREF + "engine", "google"],
+    ]);
+    expect(core.migrateLegacyPrefs(io)).toEqual([]);
+    expect(io.map.get(PREF + "engine")).toBe("google");
+    expect(io.map.get("dualtran.engine")).toBe("ai");
+  });
+});
+
+describe("google url", () => {
+  it("encodes the query without relying on URLSearchParams", () => {
+    expect(core.googleUrl({ text: "a b&c=d 中文", target: "zh-CN" })).toBe(
+      "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=" +
+        encodeURIComponent("a b&c=d 中文")
+    );
+  });
+});
+
+describe("chunk limit per engine", () => {
+  it("uses a small window for Google and a large one for AI", () => {
+    expect(core.chunkLimitFor("google")).toBe(1800);
+    expect(core.chunkLimitFor("ai")).toBe(8000);
+  });
+});
+
+describe("selection", () => {
+  const regular = (id) => ({ id, isRegularItem: () => true, parentItemID: false });
+  const child = (id, parent) => ({ id, isRegularItem: () => false, parentItemID: parent });
+
+  it("maps a selected PDF to its parent item and drops duplicates", () => {
+    const parent = regular(10);
+    const out = core.resolveTargets([regular(10), child(11, 10), child(12, 10)], (id) => (id === 10 ? parent : null));
+    expect(out.map((item) => item.id)).toEqual([10]);
+  });
+
+  it("drops notes and attachments without a parent", () => {
+    expect(core.resolveTargets([child(1, false)], () => null)).toEqual([]);
+  });
 });

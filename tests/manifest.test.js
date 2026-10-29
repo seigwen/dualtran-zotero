@@ -67,4 +67,22 @@ describe("Zotero manifest", () => {
   it("refuses a version beyond the declared maximum", () => {
     expect(inRange("11.0.0", zotero.strict_min_version, zotero.strict_max_version)).toBe(false);
   });
+
+  it("ships namespaced default preferences so every setting is discoverable", () => {
+    const prefs = readFileSync(resolve(root, "prefs.js"), "utf8");
+    const names = [...prefs.matchAll(/pref\("([^"]+)"/g)].map((match) => match[1]);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "extensions.zotero.dualtran.engine",
+        "extensions.zotero.dualtran.target",
+        "extensions.zotero.dualtran.endpoint",
+        "extensions.zotero.dualtran.apiKey",
+        "extensions.zotero.dualtran.model",
+        "extensions.zotero.dualtran.timeout",
+      ])
+    );
+    for (const name of names) {
+      expect(name.startsWith("extensions.zotero.dualtran.")).toBe(true);
+    }
+  });
 });
