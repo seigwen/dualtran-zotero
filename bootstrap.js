@@ -15,6 +15,7 @@ if (typeof Zotero == "undefined") {
 
 var DualTranCore;
 var DualTranI18n;
+var DualTranCatalog;
 
 const PLUGIN_ID = "dualtran@seigwen.dev";
 const MENU_ID = "dualtran-menu";
@@ -78,6 +79,33 @@ function config() {
   });
 }
 
+/**
+ * R4 at request time: the pane stores `lowest` (or an explicit depth); translate.js needs the
+ * concrete effort for THIS model, and nothing at all when the model declares no effort levels.
+ * The catalogue cache the pane already downloaded carries the levels, so no network here.
+ */
+function reasoningFor(settings) {
+  const catalogAPI = globalThis.DualTranCatalog;
+  if (!catalogAPI) return null;
+  const setting = Zotero.Prefs.get("extensions.zotero.dualtran.aiReasoningDepth", true) || catalogAPI.LOWEST;
+  const provider = Zotero.Prefs.get("extensions.zotero.dualtran.aiProvider", true) || "";
+  const raw = Zotero.Prefs.get("extensions.zotero.dualtran.catalog", true);
+  const cache = raw && typeof raw === "object" ? raw : null;
+  const projected = cache && cache.data ? catalogAPI.projectCatalog(cache.data) : { modelsById: {} };
+  const builtin = catalogAPI.BUILTINS.find(function (entry) {
+    return entry.id === provider;
+  });
+  const devId = builtin && builtin.dev ? builtin.dev : provider;
+  const models = (projected.modelsById && projected.modelsById[devId]) || {};
+  const model = models[settings.model];
+  const levels = model && Array.isArray(model.levels) ? model.levels : [];
+  return {
+    resolve: function () {
+      return catalogAPI.resolveReasoningDepth({ setting: String(setting), levels: levels });
+    },
+  };
+}
+
 /** 0.1.2 stored settings at the root (`dualtran.*`); move them into the plugin namespace. */
 function migratePrefs() {
   const migrated = DualTranCore.migrateLegacyPrefs({
@@ -126,7 +154,12 @@ async function translateText(text, settings) {
   }
 
   const request = DualTranCore.buildChatRequest(
-    { endpoint: settings.endpoint, apiKey: settings.apiKey, model: settings.model },
+    {
+      endpoint: settings.endpoint,
+      apiKey: settings.apiKey,
+      model: settings.model,
+      reasoning: reasoningFor(settings),
+    },
     { text: text, target: settings.target }
   );
   const response = await Zotero.HTTP.request("POST", request.url, {
@@ -528,14 +561,65 @@ async function runReaderAction(button, mode, reader, attachment, annotation) {
   }
 }
 
+/* ------------------------------------------------------------- preference pane */
+
+/** Zotero 7 registers plugin preference panes through this API; 6 had no equivalent. */
+const PANE_ID = "dualtran@seigwen";
+const PANE_SCRIPTS = [
+  "content/catalog.js",
+  "content/languages.js",
+  "content/preferences.js",
+];
+
+function installPreferencePane(rootURI) {
+  if (!Zotero.PreferencePanes || typeof Zotero.PreferencePanes.register !== "function") {
+    log("no PreferencePanes API in this Zotero; the pane is unavailable");
+    return false;
+  }
+  try {
+    Zotero.PreferencePanes.register({
+      // Not PLUGIN_ID: manifest.json registers the add-on as dualtran@seigwen.dev, but the pane
+      // is keyed by the documented add-on id the product spec names (dualtran@seigwen).
+      pluginID: PANE_ID,
+      src: rootURI + "content/preferences.xhtml",
+      label: "DualTran",
+      image: rootURI + "icons/dualtran.svg",
+      scripts: PANE_SCRIPTS.map(function (path) {
+        return rootURI + path;
+      }),
+    });
+    log("preference pane registered");
+    return true;
+  } catch (error) {
+    log("preference pane registration failed: " + errorMessage(error));
+    return false;
+  }
+}
+
+function uninstallPreferencePane() {
+  try {
+    if (Zotero.PreferencePanes && typeof Zotero.PreferencePanes.unregister === "function") {
+      Zotero.PreferencePanes.unregister(PANE_ID);
+      log("preference pane unregistered");
+    }
+  } catch (error) {
+    log("preference pane unregister failed: " + errorMessage(error));
+  }
+}
+
 /* ---------------------------------------------------------------- startup */
 
 async function startup({ id, version, rootURI }) {
   await Zotero.initializationPromise;
+  // The pane's script is evaluated in another window scope, so it finds the add-on by this URI.
+  Zotero.DualTranRootURI = rootURI;
   Services.scriptloader.loadSubScript(rootURI + "content/i18n.js", this);
   Services.scriptloader.loadSubScript(rootURI + "content/translate.js", this);
+  // Request-time reasoning resolves against the catalogue cache the pane writes (product rule R4).
+  Services.scriptloader.loadSubScript(rootURI + "content/catalog.js", this);
   DualTranI18n = globalThis.DualTranI18n;
   DualTranCore = globalThis.DualTranCore;
+  DualTranCatalog = globalThis.DualTranCatalog;
   if (!DualTranCore || !DualTranI18n) throw new Error("DualTran: core failed to load");
 
   await loadTranslations(rootURI);
@@ -546,6 +630,8 @@ async function startup({ id, version, rootURI }) {
     log("pref migration failed: " + errorMessage(error));
   }
 
+  installPreferencePane(rootURI);
+
   log("starting " + id + " " + version + " locale=" + Zotero.locale);
   for (const win of Zotero.getMainWindows()) installMenu(win);
   startWindowObserver();
@@ -555,6 +641,7 @@ async function startup({ id, version, rootURI }) {
 function shutdown({ id, version, rootURI }, reason) {
   stopWindowObserver();
   removeReaderListener();
+  uninstallPreferencePane();
   if (reason === APP_SHUTDOWN) return;
   for (const win of Zotero.getMainWindows()) removeMenu(win);
   log("shutdown");

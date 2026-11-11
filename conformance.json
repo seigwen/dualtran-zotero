@@ -1,0 +1,22 @@
+{
+  "spec": "2.0.0",
+  "host": "dualtran-zotero",
+  "payload": "tests/conformance.test.js",
+  "static": {
+    "files": [
+      "content/preferences.xhtml",
+      "content/preferences.js"
+    ],
+    "patterns": [
+      "providerSeparator",
+      "__separator__",
+      "__more__",
+      "More (models.dev)",
+      {
+        "token": "target-input",
+        "regex": "<input[^>]+id=[\"']target[\"']"
+      }
+    ]
+  },
+  "platformLimits": []
+}

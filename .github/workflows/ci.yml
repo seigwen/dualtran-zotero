@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Unit + conformance tests
+        run: npm test
+      - name: Host conformance (SPEC v2)
+        run: npm run conformance
+      - name: Build XPI
+        run: npm run build

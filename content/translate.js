@@ -111,6 +111,12 @@
         { role: "user", content: options.text },
       ],
     };
+    // R4: the pane stores the "lowest" sentinel; the concrete effort (none → minimal → low) is
+    // resolved here, per model. No reasoning parameter at all when the model declares none.
+    if (config.reasoning && typeof config.reasoning.resolve === "function") {
+      const level = config.reasoning.resolve();
+      if (level) body.reasoning_effort = level;
+    }
     const headers = { "Content-Type": "application/json" };
     if (config.apiKey) headers.Authorization = "Bearer " + config.apiKey;
     return { url: chatCompletionsUrl(config.endpoint), headers: headers, body: JSON.stringify(body) };
