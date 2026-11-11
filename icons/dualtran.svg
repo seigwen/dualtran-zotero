@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- DualTran pane icon: two interlocking language blocks. -->
+  <rect x="2" y="8" width="18" height="14" rx="3" fill="#2ea8e5"/>
+  <rect x="12" y="11" width="18" height="14" rx="3" fill="none" stroke="#2ea8e5" stroke-width="2.5"/>
+  <path d="M8 13h6M11 13v5M8 16h6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+</svg>

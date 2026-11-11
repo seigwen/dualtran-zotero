@@ -9,7 +9,9 @@
   "scripts": {
     "test": "vitest run",
     "build": "node scripts/build.mjs",
-    "i18n:translate": "node scripts/i18n-translate.mjs"
+    "i18n:translate": "node scripts/i18n-translate.mjs",
+    "conformance": "node scripts/conformance/run.mjs",
+    "i18n:merge": "node scripts/i18n-merge-missing.mjs"
   },
   "keywords": [
     "zotero",

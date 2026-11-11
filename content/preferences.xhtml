@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DualTran preference pane body (Zotero 7+).
+
+  Zotero loads this file inside its own preferences document and runs the `scripts` registered
+  with Zotero.PreferencePanes.register (see bootstrap.js) in the window scope. Nothing here
+  hardcodes catalogue data: content/preferences.js renders every <option> from
+  DualTranCatalog / DualTranLanguages and fills in the labels through data-i18n, so the markup
+  stays stable and R1/R2/R3 are enforced in one place.
+
+  The target language is a <select element, never a free-text code field (product rule R1).
+-->
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml"
+      id="dualtran-preferences"
+      class="main-section">
+
+  <html:h1 class="dualtran-heading" data-i18n="pref.title">DualTran</html:h1>
+
+  <html:section class="dualtran-section">
+    <html:label class="dualtran-label" for="target" data-i18n="pref.target">Target language</html:label>
+    <html:select id="target" native="true" class="dualtran-select" data-i18n-aria-label="pref.target"></html:select>
+    <html:p class="dualtran-description" data-i18n="pref.targetDesc"></html:p>
+  </html:section>
+
+  <html:section class="dualtran-section">
+    <html:label class="dualtran-label" for="provider" data-i18n="pref.provider">AI provider</html:label>
+    <html:select id="provider" native="true" class="dualtran-select" data-i18n-aria-label="pref.provider"></html:select>
+    <html:p class="dualtran-description" data-i18n="pref.providerDesc"></html:p>
+
+    <html:label class="dualtran-label" for="model" data-i18n="pref.model">Model</html:label>
+    <html:select id="model" native="true" class="dualtran-select" data-i18n-aria-label="pref.model"></html:select>
+    <html:p class="dualtran-description" data-i18n="pref.modelDesc"></html:p>
+
+    <html:label class="dualtran-label" for="endpoint" data-i18n="pref.endpoint">API endpoint</html:label>
+    <html:input id="endpoint" type="text" class="dualtran-input" spellcheck="false" data-i18n-aria-label="pref.endpoint"/>
+    <html:p class="dualtran-description" data-i18n="pref.endpointDesc"></html:p>
+
+    <html:label class="dualtran-label" for="reasoning" data-i18n="pref.reasoning">Reasoning</html:label>
+    <html:select id="reasoning" native="true" class="dualtran-select" data-i18n-aria-label="pref.reasoning"></html:select>
+    <html:p class="dualtran-description" data-i18n="pref.reasoningDesc"></html:p>
+
+    <html:label class="dualtran-label" for="apiKey" data-i18n="pref.apiKey">API key</html:label>
+    <html:input id="apiKey" type="password" class="dualtran-input" spellcheck="false" autocomplete="off" data-i18n-aria-label="pref.apiKey"/>
+    <html:p class="dualtran-description" data-i18n="pref.apiKeyDesc"></html:p>
+  </html:section>
+
+  <html:section class="dualtran-section dualtran-footer">
+    <html:button id="refresh" type="button" class="dualtran-button" data-i18n="pref.refresh">Refresh catalogue</html:button>
+    <html:span id="status" class="dualtran-status" role="status" aria-live="polite"></html:span>
+  </html:section>
+
+</vbox>
+
