@@ -68,29 +68,105 @@ describe("note html", () => {
 
 const PREF = "extensions.zotero.dualtran.";
 
+describe("unconfigured AI provider (SPEC 2.1)", () => {
+  it("defaults to an empty provider instead of OpenAI, with no OpenAI endpoint or model", () => {
+    expect(core.DEFAULT_CONFIG.provider).toBe("");
+    expect(core.DEFAULT_CONFIG.endpoint).toBe("");
+    expect(core.DEFAULT_CONFIG.model).toBe("");
+    // The API key default is an empty string, never a placeholder that would be sent as a token.
+    expect(core.DEFAULT_CONFIG.apiKey).toBe("");
+    expect(core.DEFAULT_CONFIG.reasoning).toBe("lowest");
+  });
+
+  it("keeps an empty provider empty on read and never falls back to openai", () => {
+    const config = core.readConfig((key) => (key === PREF + "engine" ? "ai" : undefined));
+    expect(config.provider).toBe("");
+    expect(config.providerRequired).toBe(true);
+    // No silent OpenAI surface anywhere in the unconfigured state.
+    expect(config.endpoint).not.toMatch(/openai/i);
+    expect(config.model).not.toMatch(/gpt|openai/i);
+  });
+
+  it("reads the pref names the preference pane actually writes", () => {
+    const stored = {
+      [PREF + "aiProvider"]: "deepseek",
+      [PREF + "aiBaseUrl"]: "https://proxy.example/v1",
+      [PREF + "aiModel"]: "deepseek-v4-pro",
+    };
+    const config = core.readConfig((key) => stored[key]);
+    expect(config.provider).toBe("deepseek");
+    expect(config.endpoint).toBe("https://proxy.example/v1");
+    expect(config.model).toBe("deepseek-v4-pro");
+  });
+
+  it("preserves a stored provider verbatim", () => {
+    const config = core.readConfig((key) =>
+      key === PREF + "aiProvider" ? "anthropic" : key === PREF + "engine" ? "ai" : undefined
+    );
+    expect(config.provider).toBe("anthropic");
+    expect(config.providerRequired).toBe(false);
+  });
+
+  it("flags the unconfigured state for any provider value that is blank or whitespace", () => {
+    const read = (value, engine) =>
+      core.readConfig((key) => {
+        if (key === PREF + "aiProvider") return value;
+        if (key === PREF + "engine") return engine;
+        return undefined;
+      });
+    expect(read("   ", "ai").providerRequired).toBe(true);
+    expect(read("   ", "ai").provider).toBe("");
+    // Google does not need a provider; the flag only concerns the AI engine.
+    expect(read(undefined, "google").providerRequired).toBe(false);
+  });
+
+  it("returns a sendable request only when a provider is chosen", () => {
+    const chosen = core.readConfig((key) => {
+      if (key === PREF + "aiProvider") return "anthropic";
+      if (key === PREF + "aiBaseUrl") return "https://api.anthropic.com/v1";
+      if (key === PREF + "aiModel") return "claude-sonnet-4-5";
+      if (key === PREF + "engine") return "ai";
+      return undefined;
+    });
+    const request = core.buildProviderRequest(chosen, { text: "Hi", target: "zh-CN" });
+    expect(request.url).toBe("https://api.anthropic.com/v1/chat/completions");
+  });
+
+  it("refuses to build a request without a provider", () => {
+    const empty = core.readConfig((key) => (key === PREF + "engine" ? "ai" : undefined));
+    expect(() => core.buildProviderRequest(empty, { text: "Hi", target: "zh-CN" })).toThrow(
+      core.PROVIDER_REQUIRED
+    );
+    expect(core.providerRequiredError()).toBe(core.PROVIDER_REQUIRED);
+  });
+});
+
 describe("preferences", () => {
   it("reads every key from the scoped Zotero namespace", () => {
     const seen = [];
     const config = core.readConfig((key) => {
       seen.push(key);
       if (key === PREF + "engine") return "ai";
-      if (key === PREF + "model") return "deepseek-chat";
+      if (key === PREF + "aiModel") return "deepseek-chat";
       return undefined;
     });
     expect(seen).toEqual(
       expect.arrayContaining([
         PREF + "engine",
         PREF + "target",
-        PREF + "endpoint",
+        PREF + "aiProvider",
+        PREF + "aiBaseUrl",
         PREF + "apiKey",
-        PREF + "model",
+        PREF + "aiModel",
         PREF + "timeout",
       ])
     );
     expect(config.engine).toBe("ai");
     expect(config.model).toBe("deepseek-chat");
     expect(config.target).toBe("zh-CN");
-    expect(config.endpoint).toBe("https://api.openai.com/v1");
+    // SPEC 2.1: nothing is filled in behind the user's back.
+    expect(config.endpoint).toBe("");
+    expect(config.provider).toBe("");
     expect(config.timeout).toBe(120000);
   });
 

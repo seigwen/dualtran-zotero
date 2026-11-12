@@ -38,9 +38,10 @@
 
   const DEFAULTS = {
     target: "zh-CN",
-    provider: "openai",
+    /** SPEC 2.1: a fresh profile is unconfigured — never `openai`, never `custom`. */
+    provider: "",
     model: "",
-    endpoint: "https://api.openai.com/v1",
+    endpoint: "",
     reasoning: "lowest",
     apiKey: "",
   };
@@ -86,30 +87,39 @@
     return PREF_PREFIX + name;
   }
 
-  /** Read the pane's settings through `io.getPref` (fully-qualified names). */
+  /**
+   * Read the pane's settings through `io.getPref` (fully-qualified names).
+   *
+   * SPEC 2.1 rule 1: a stored value is reported exactly as stored (whitespace trimmed). An empty
+   * provider stays empty — the pane renders its placeholder instead of inventing a provider — and
+   * the fallbacks here are the *defaults*, which are themselves empty.
+   */
   function readSettings(io) {
     const read = (name, fallback) => {
       const value = io.getPref(prefKey(name));
-      return isBlank(value) ? fallback : value;
+      return isBlank(value) ? fallback : String(value).trim();
     };
     return {
-      target: String(read(PREFS.target, DEFAULTS.target)),
-      provider: String(read(PREFS.provider, DEFAULTS.provider)),
-      model: String(read(PREFS.model, DEFAULTS.model)),
-      endpoint: String(read(PREFS.endpoint, DEFAULTS.endpoint)),
-      reasoning: String(read(PREFS.reasoning, DEFAULTS.reasoning)),
-      apiKey: String(read(PREFS.apiKey, DEFAULTS.apiKey)),
+      target: read(PREFS.target, DEFAULTS.target),
+      provider: read(PREFS.provider, DEFAULTS.provider),
+      model: read(PREFS.model, DEFAULTS.model),
+      endpoint: read(PREFS.endpoint, DEFAULTS.endpoint),
+      reasoning: read(PREFS.reasoning, DEFAULTS.reasoning),
+      apiKey: read(PREFS.apiKey, DEFAULTS.apiKey),
     };
   }
 
   /**
    * Copy the 0.2.x settings into the pane's keys, once.
    *
-    * Only keys the user actually set are copied (so a stale default does not win over the new
-    * default), the new keys are never overwritten, and the migration is recorded in a pref so a
-    * later manual choice cannot be undone on the next start. The target language keeps its own
-    * 0.2.x key name (`target`), so it is not part of the move list.
-    */
+   * Only keys the user actually set are copied (so a stale default does not win over the new
+   * default), the new keys are never overwritten, and the migration is recorded in a pref so a
+   * later manual choice cannot be undone on the next start. The target language keeps its own
+   * 0.2.x key name (`target`), so it is not part of the move list.
+   *
+   * SPEC 2.1 rule 8: there is no provider migration. 0.2.x never stored an AI provider id, so
+   * nothing is invented from `engine`; a 0.2.x user starts unconfigured and picks a provider.
+   */
   function migrateLegacy(io) {
     if (io.getPref(prefKey(PREFS.migrated)) === true) return [];
     const moves = [
@@ -126,12 +136,6 @@
       if (isBlank(value)) continue;
       io.setPref(prefKey(move.to), value);
       migrated.push(move.to);
-    }
-    const engine = io.getPref(prefKey(LEGACY.engine));
-    if (!io.hasUserValue(prefKey(PREFS.provider)) && String(engine || "").toLowerCase() === "google") {
-      // 0.2.x translated for free through Google; keep the pane honest about that choice by
-      // leaving the provider at its default instead of pretending the key above is used.
-      migrated.push("provider(default)");
     }
     io.setPref(prefKey(PREFS.migrated), true);
     return migrated;
@@ -202,6 +206,82 @@
 
   function providerEntry(providers, id) {
     return providers.find((entry) => entry.id === id) || null;
+  }
+
+  /**
+   * Rows for the provider picker (SPEC 2.1 rule 2).
+   *
+   * One alphabetical list of real providers, the custom provider last. The placeholder is a
+   * separate, *disabled* first row that only appears while nothing is chosen: it is not a
+   * provider, never takes part in the sort, and — being disabled — can never be picked again
+   * once the user leaves the empty state (rule 6).
+   *
+   * A stored id the catalogue does not list is kept as its own row instead of being swapped for
+   * another provider: stored values are never rewritten (rule 1).
+   */
+  function providerRows(providers, current, t) {
+    const rows = [];
+    const label = (entry) => (entry.source === "custom" ? t("pref.customProvider") : entry.name);
+    if (!current) rows.push({ value: "", text: t("providerPlaceholder"), disabled: true });
+    for (const entry of providers) rows.push({ value: entry.id, text: label(entry) });
+    if (current && !providerEntry(providers, current)) rows.push({ value: current, text: current });
+    return rows;
+  }
+
+  /**
+   * Fill the provider picker and keep `state.provider` honest.
+   *
+   * The selected value comes from the stored state, never from "whatever ended up first": a
+   * blank stored provider selects the placeholder, and nothing here writes a pref.
+   */
+  function renderProvider(select, providers, state, t) {
+    if (!select) return;
+    const rows = providerRows(providers, state.provider, t);
+    fillSelect(select, rows, state.provider);
+    const placeholder = select.options && select.options[0];
+    if (placeholder && placeholder.getAttribute("value") === "") {
+      placeholder.disabled = true;
+      placeholder.setAttribute("disabled", "true");
+    }
+    state.provider = String(select.value || "");
+    // `selected` is only true while the unconfigured row is the one on screen (rule 2).
+    for (const option of select.options || []) {
+      if (option.getAttribute("value") === "" && state.provider === "") option.setAttribute("selected", "true");
+      else option.removeAttribute("selected");
+    }
+  }
+
+  /** Model rows with a translated custom-model label, empty while no provider is chosen. */
+  function renderModel(select, providers, state, t) {
+    if (!select) return;
+    const entry = state.provider ? providerEntry(providers, state.provider) : null;
+    const rows = modelRows(entry, t("pref.customModel"));
+    fillSelect(select, rows, state.model);
+    if (rows.length && rows.some((row) => String(row.value) === String(select.value))) {
+      state.model = String(select.value);
+    } else {
+      state.model = "";
+    }
+    select.disabled = !state.provider;
+    if (!state.provider) {
+      select.setAttribute("aria-label", t("providerRequiredForModel"));
+      if (select.firstChild) select.firstChild.textContent = t("providerRequiredForModel");
+    }
+  }
+
+  /**
+   * Reasoning rows (R4). The stored sentinel is never replaced: while no provider is chosen the
+   * picker is merely disabled and still shows `lowest`.
+   */
+  function renderReasoning(select, catalogue, state, t) {
+    if (!select) return;
+    const levels = state.provider ? levelsFor(catalogue, state.provider, state.model) : [];
+    const rows = reasoningRows(levels, t);
+    fillSelect(select, rows, state.reasoning);
+    if (!state.provider && select.options && select.options[0]) {
+      select.value = state.reasoning;
+    }
+    select.disabled = !state.provider;
   }
 
   function modelRows(entry, customLabel) {
@@ -291,6 +371,14 @@ function statusText(t, state) {
     const loaded = await loadCatalogue(io, options && options.catalogue);
     const projected = catalog.projectCatalog(loaded.data);
     const providers = catalog.buildProviderList(projected);
+    /**
+     * Rule 4: once a provider is chosen, the endpoint shows that provider's API base. A profile
+     * that has a provider but no stored endpoint (a pane older than the field, or a pref edited
+     * by hand) must not render an empty field next to a chosen provider.
+     */
+    if (settings.provider && isBlank(settings.endpoint)) {
+      settings.endpoint = catalog.apiForProvider(projected.providers, settings.provider);
+    }
     const state = {
       providers: providers,
       catalogue: projected,
@@ -304,23 +392,17 @@ function statusText(t, state) {
     /** Re-render everything except the endpoint, which the user may be editing. */
     function render(resetEndpoint) {
       fillSelect(target, catalog.languageOptions(languages ? languages.names : {}, settings.target), settings.target);
+      // A blank stored target takes the first row without being written back: stored values are
+      // never rewritten (SPEC 2.1 rule 1) — only a real user change saves.
       settings.target = target.value || settings.target;
-      fillSelect(
-        provider,
-        providers.map((entry) => ({
-          value: entry.id,
-          text: entry.source === "custom" ? t("pref.customProvider") : entry.name,
-        })),
-        state.provider
-      );
-      state.provider = provider.value || state.provider;
-      const entry = providerEntry(providers, state.provider);
-      fillSelect(model, modelRows(entry, t("pref.customModel")), state.model);
-      state.model = model.value || state.model;
-      fillSelect(reasoning, reasoningRows(levelsFor(projected, state.provider, state.model), t), settings.reasoning);
+      renderProvider(provider, providers, state, t);
+      renderModel(model, providers, state, t);
+      renderReasoning(reasoning, projected, { ...state, reasoning: settings.reasoning }, t);
       if (endpoint) {
         if (resetEndpoint) endpoint.value = state.endpoint;
         else if (!endpoint.value) endpoint.value = state.endpoint;
+        // Rule 3: an unconfigured pane shows an empty field with the `https://` hint.
+        endpoint.setAttribute("placeholder", "https://");
       }
       if (apiKey) apiKey.value = settings.apiKey;
       if (status) status.textContent = statusText(t, { ts: loaded.ts, source: loaded.source });
@@ -335,10 +417,18 @@ function statusText(t, state) {
       save(PREFS.target, settings.target);
     }
 
-    /** R2 + R3: a provider pick rewrites the model list and, when the endpoint is pristine, its base. */
+    /**
+     * R2 + R3 + rule 4: a provider pick rewrites the model list, enables the cascade and — while
+     * the endpoint is pristine — fills in the provider's API base. The placeholder is disabled,
+     * so `nextProvider === ""` cannot come from a user choice and is ignored outright.
+     */
     function onProviderChange() {
       const previousProvider = state.provider;
-      const nextProvider = provider.value;
+      const nextProvider = String(provider.value || "");
+      if (!nextProvider) {
+        renderProvider(provider, providers, state, t);
+        return;
+      }
       const resolved = catalog.resolveEndpointOnProviderChange({
         current: endpoint ? endpoint.value : state.endpoint,
         previousProvider: previousProvider,
@@ -354,16 +444,16 @@ function statusText(t, state) {
         const first = nextEntry && nextEntry.models.find((row) => !/^__custom/.test(row.value));
         state.model = first ? first.value : "";
       }
-      fillSelect(model, modelRows(nextEntry, t("pref.customModel")), state.model);
-      state.model = model.value || state.model;
-      fillSelect(reasoning, reasoningRows(levelsFor(projected, state.provider, state.model), t), settings.reasoning);
+      renderModel(model, providers, state, t);
+      renderReasoning(reasoning, projected, { ...state, reasoning: settings.reasoning }, t);
       if (endpoint) endpoint.value = resolved;
       save(PREFS.provider, state.provider);
-      save(PREFS.endpoint, resolved);
+      if (resolved) save(PREFS.endpoint, resolved);
       if (state.model) save(PREFS.model, state.model);
     }
 
     function onModelChange() {
+      if (!state.provider || !model.value) return;
       state.model = model.value;
       save(PREFS.model, state.model);
       fillSelect(reasoning, reasoningRows(levelsFor(projected, state.provider, state.model), t), reasoning.value);
@@ -398,21 +488,13 @@ function statusText(t, state) {
         state.catalogue = next;
         state.source = reloaded.source;
         state.ts = reloaded.ts;
-        fillSelect(
-          provider,
-          state.providers.map((item) => ({
-            value: item.id,
-            text: item.source === "custom" ? t("pref.customProvider") : item.name,
-          })),
-          state.provider
-        );
-        if (!providerEntry(state.providers, state.provider) && state.providers.length) {
-          state.provider = state.providers[0].id;
-          provider.value = state.provider;
+        renderProvider(provider, state.providers, state, t);
+        // Never pick a provider for the user: an unconfigured pane keeps its placeholder even
+        // after a catalogue refresh (rule 1).
+        if (!state.provider) {
+          renderModel(model, state.providers, state, t);
+          renderReasoning(reasoning, next, { ...state, reasoning: settings.reasoning }, t);
         }
-        const entry = providerEntry(state.providers, state.provider);
-        fillSelect(model, modelRows(entry, t("pref.customModel")), state.model);
-        state.model = model.value || state.model;
         if (status) status.textContent = statusText(t, { ts: reloaded.ts, source: reloaded.source });
       } finally {
         if (refresh) refresh.disabled = false;
@@ -512,6 +594,12 @@ function statusText(t, state) {
     isFresh: isFresh,
     loadCatalogue: loadCatalogue,
     fillSelect: fillSelect,
+    providerRows: providerRows,
+    renderProvider: renderProvider,
+    renderModel: renderModel,
+    renderReasoning: renderReasoning,
+    providerEntry: providerEntry,
+    modelRows: modelRows,
     nodesWithAttribute: nodesWithAttribute,
     levelsFor: levelsFor,
     reasoningRows: reasoningRows,

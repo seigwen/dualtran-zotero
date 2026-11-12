@@ -52,5 +52,8 @@
   "pref.apiKeyDesc": "Stored locally in your Zotero profile and sent only to the endpoint above.",
   "pref.refresh": "Refresh catalogue",
   "pref.catalogStatus": "Catalogue updated {date}",
-  "pref.customProvider": "Custom provider"
+  "pref.customProvider": "Custom provider",
+  "providerPlaceholder": "Select a provider",
+  "providerRequiredForModel": "Select a provider first",
+  "providerRequiredError": "Choose an AI provider in settings before translating."
 }

@@ -80,6 +80,24 @@ function config() {
 }
 
 /**
+ * SPEC 2.1 rule 5: the one localized message for "an AI translation without a provider".
+ * Returned as `null` when the configured engine can run, so callers only have two cases.
+ */
+function providerRequiredMessage(settings) {
+  if (!settings || settings.engine !== "ai") return null;
+  if (String(settings.provider || "").trim()) return null;
+  return t("providerRequiredError");
+}
+
+/** The AI provider cannot run yet: warn the user and tell the caller to stop. */
+function refuseWithoutProvider(win, settings) {
+  const message = providerRequiredMessage(settings);
+  if (!message) return false;
+  alertUser(win, message);
+  return true;
+}
+
+/**
  * R4 at request time: the pane stores `lowest` (or an explicit depth); translate.js needs the
  * concrete effort for THIS model, and nothing at all when the model declares no effort levels.
  * The catalogue cache the pane already downloaded carries the levels, so no network here.
@@ -87,8 +105,8 @@ function config() {
 function reasoningFor(settings) {
   const catalogAPI = globalThis.DualTranCatalog;
   if (!catalogAPI) return null;
-  const setting = Zotero.Prefs.get("extensions.zotero.dualtran.aiReasoningDepth", true) || catalogAPI.LOWEST;
-  const provider = Zotero.Prefs.get("extensions.zotero.dualtran.aiProvider", true) || "";
+  const setting = String(settings.reasoning || catalogAPI.LOWEST);
+  const provider = String(settings.provider || "");
   const raw = Zotero.Prefs.get("extensions.zotero.dualtran.catalog", true);
   const cache = raw && typeof raw === "object" ? raw : null;
   const projected = cache && cache.data ? catalogAPI.projectCatalog(cache.data) : { modelsById: {} };
@@ -153,8 +171,9 @@ async function translateText(text, settings) {
     return DualTranCore.parseGoogleResponse(response.response);
   }
 
-  const request = DualTranCore.buildChatRequest(
+  const request = DualTranCore.buildProviderRequest(
     {
+      provider: settings.provider,
       endpoint: settings.endpoint,
       apiKey: settings.apiKey,
       model: settings.model,
@@ -310,6 +329,9 @@ async function runItemAction(win, action) {
     return;
   }
 
+  // SPEC 2.1 rule 5: no provider means no request — say why and stop before any work begins.
+  if (refuseWithoutProvider(win, settings)) return;
+
   if (action === "replace") {
     const message = t("confirm.replace", { count: items.length });
     let choice;
@@ -369,6 +391,32 @@ async function runItemAction(win, action) {
   }
 }
 
+/**
+ * SPEC 2.1 rule 5, the menu's primary button: while no AI provider is configured the DualTran
+ * menu is disabled and its tooltip carries the localized reason. Re-evaluated every time the
+ * menu opens, because the provider is chosen in another window after startup.
+ */
+function syncMenuState(win) {
+  const doc = win && win.document;
+  const menu = doc && doc.getElementById ? doc.getElementById(MENU_ID) : null;
+  if (!menu) return;
+  let settings = null;
+  try {
+    settings = config();
+  } catch (error) {
+    // A broken config is reported when the action runs; the menu stays clickable.
+    return;
+  }
+  const required = providerRequiredMessage(settings);
+  if (required) {
+    menu.setAttribute("disabled", "true");
+    menu.setAttribute("tooltiptext", required);
+  } else {
+    menu.removeAttribute("disabled");
+    menu.removeAttribute("tooltiptext");
+  }
+}
+
 function installMenu(win) {
   const doc = win && win.document;
   if (!doc || doc.getElementById(MENU_ID)) return false;
@@ -398,6 +446,10 @@ function installMenu(win) {
   }
 
   tools.appendChild(menu);
+  popup.addEventListener("popupshowing", function () {
+    syncMenuState(win);
+  });
+  syncMenuState(win);
   log("tools menu installed");
   return true;
 }
@@ -525,12 +577,33 @@ async function onSelectionPopup(event) {
 
 async function runReaderAction(button, mode, reader, attachment, annotation) {
   if (button.dataset.busy) return;
+
+  // SPEC 2.1 rule 5: the popup button is a primary button. Without a provider it stays disabled,
+  // its tooltip carries the localized reason, and nothing is sent.
+  let settings;
+  try {
+    settings = config();
+  } catch (error) {
+    button.textContent = t("reader.error");
+    button.title = errorMessage(error);
+    log("reader action failed: " + errorMessage(error));
+    button.disabled = true;
+    return;
+  }
+  const required = providerRequiredMessage(settings);
+  if (required) {
+    button.disabled = true;
+    button.title = required;
+    button.textContent = t("reader.error");
+    log("reader action blocked: no AI provider configured");
+    return;
+  }
+
   button.dataset.busy = "1";
   button.disabled = true;
   button.textContent = t("reader.loading");
 
   try {
-    const settings = config();
     const translation = await translateChunked(annotation.text, settings);
 
     if (mode === "note") {

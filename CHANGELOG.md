@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — SPEC 2.1
+
+### Changed
+
+- **A fresh install has no AI provider.** `aiProvider`, `aiBaseUrl` and `aiModel` start empty
+  instead of defaulting to OpenAI; the preference pane shows a disabled “Select a provider” row,
+  keeps the model picker empty and disabled (“Select a provider first”), disables the reasoning
+  picker while its stored `lowest` sentinel stays, and shows an empty endpoint with the
+  `https://` hint.
+- An AI translation with no provider chosen is refused with the localized
+  “Choose an AI provider in settings before translating.” — the Tools → DualTran menu is disabled
+  with that tooltip and the reader popup button stays disabled. Nothing is sent.
+- `readConfig()` reads the prefs the pane actually writes (`aiProvider`, `aiBaseUrl`, `aiModel`);
+  the old `endpoint` / `model` keys remain as a fallback for 0.2.x profiles.
+- Conformance kit updated to SPEC 2.1.0; the payload now reports both the unconfigured and the
+  configured state from a real mount of the pane.
+
+### Added
+
+- `providerPlaceholder`, `providerRequiredForModel`, `providerRequiredError` in all 38 locales.
+
 ## 0.2.0
 
 ### Added
