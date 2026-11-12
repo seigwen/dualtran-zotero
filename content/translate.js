@@ -20,13 +20,44 @@
   const DEFAULT_CONFIG = {
     engine: "google",
     target: "zh-CN",
-    endpoint: "https://api.openai.com/v1",
+    /**
+     * SPEC 2.1: a fresh install has NO AI provider. The endpoint and model follow from the
+     * provider the user picks, so they start empty too — nothing here may suggest OpenAI.
+     */
+    provider: "",
+    endpoint: "",
     apiKey: "",
-    model: "gpt-4o-mini",
+    model: "",
+    /** R4: the stored sentinel, not a concrete effort. */
+    reasoning: "lowest",
     timeout: 120000,
   };
 
+  /** Shown (and thrown) when an AI translation is attempted without a provider. */
+  const PROVIDER_REQUIRED = "Choose an AI provider in settings before translating.";
+
   const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG);
+
+  /**
+   * The pane writes these names (see the PREFS map in content/preferences.js): reading the raw
+   * field names made the pane's choices invisible to the request path, so each field lists its
+   * pref name(s). The second entry is the 0.2.x name, still honoured for older profiles.
+   */
+  const PREF_NAMES = {
+    provider: ["aiProvider"],
+    endpoint: ["aiBaseUrl", "endpoint"],
+    model: ["aiModel", "model"],
+    reasoning: ["aiReasoningDepth"],
+  };
+
+  /** First non-blank value among the pref names a field accepts, or the shipped default. */
+  function readField(getPref, key) {
+    for (const name of PREF_NAMES[key] || [key]) {
+      const value = getPref(PREF_PREFIX + name);
+      if (!isBlank(value)) return value;
+    }
+    return DEFAULT_CONFIG[key];
+  }
 
   function isBlank(value) {
     return value === undefined || value === null || value === "";
@@ -40,8 +71,7 @@
   function readConfig(getPref) {
     const values = {};
     for (const key of CONFIG_KEYS) {
-      const value = getPref(PREF_PREFIX + key);
-      values[key] = isBlank(value) ? DEFAULT_CONFIG[key] : value;
+      values[key] = readField(getPref, key);
     }
 
     const engine = String(values.engine).trim().toLowerCase();
@@ -52,14 +82,25 @@
     }
 
     const timeout = Number(values.timeout);
+    // SPEC 2.1: an empty provider is a real state, not a blank to fill with a default. The raw
+    // value is handed back untouched (whitespace stripped); nothing here picks a provider.
+    const provider = isBlank(values.provider) ? "" : String(values.provider).trim();
     return {
       engine: engine,
       target: String(values.target).trim() || DEFAULT_CONFIG.target,
-      endpoint: String(values.endpoint).trim() || DEFAULT_CONFIG.endpoint,
-      apiKey: isBlank(values.apiKey) ? "" : String(values.apiKey).trim(),
-      model: String(values.model).trim() || DEFAULT_CONFIG.model,
+      provider: provider,
+      providerRequired: engine === "ai" && provider === "",
+      endpoint: isBlank(values.endpoint) ? "" : String(values.endpoint).trim(),
+      apiKey: values.apiKey == null ? "" : String(values.apiKey).trim(),
+      model: isBlank(values.model) ? "" : String(values.model).trim(),
+      reasoning: String(values.reasoning || DEFAULT_CONFIG.reasoning),
       timeout: Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_CONFIG.timeout,
     };
+  }
+
+  /** The message for an AI translation attempted without a provider. */
+  function providerRequiredError() {
+    return PROVIDER_REQUIRED;
   }
 
   /**
@@ -120,6 +161,21 @@
     const headers = { "Content-Type": "application/json" };
     if (config.apiKey) headers.Authorization = "Bearer " + config.apiKey;
     return { url: chatCompletionsUrl(config.endpoint), headers: headers, body: JSON.stringify(body) };
+  }
+
+  /**
+   * THE request path for an AI translation (SPEC 2.1, rule 5).
+   *
+   * Every AI entry point goes through here, so "no provider" is refused in exactly one place:
+   * an unconfigured install throws PROVIDER_REQUIRED and never builds — let alone sends — a
+   * request. There is deliberately no `|| "openai"` / `|| CUSTOM_PROVIDER` fallback.
+   */
+  function buildProviderRequest(config, options) {
+    const settings = config || {};
+    if (isBlank(settings.provider)) throw new Error(PROVIDER_REQUIRED);
+    if (!String(settings.endpoint || "").trim()) throw new Error('The AI provider "' + settings.provider + '" has no API endpoint.');
+    if (!String(settings.model || "").trim()) throw new Error('The AI provider "' + settings.provider + '" has no model selected.');
+    return buildChatRequest(settings, options);
   }
 
   function parseChatResponse(payload) {
@@ -407,11 +463,14 @@
     PREF_PREFIX: PREF_PREFIX,
     LEGACY_PREFIX: LEGACY_PREFIX,
     DEFAULT_CONFIG: DEFAULT_CONFIG,
+    PROVIDER_REQUIRED: PROVIDER_REQUIRED,
     readConfig: readConfig,
+    providerRequiredError: providerRequiredError,
     migrateLegacyPrefs: migrateLegacyPrefs,
     normalizeEndpoint: normalizeEndpoint,
     chatCompletionsUrl: chatCompletionsUrl,
     buildChatRequest: buildChatRequest,
+    buildProviderRequest: buildProviderRequest,
     parseChatResponse: parseChatResponse,
     googleUrl: googleUrl,
     parseGoogleResponse: parseGoogleResponse,

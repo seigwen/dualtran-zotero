@@ -64,6 +64,33 @@ describe("locale files", () => {
       }
     }
   });
+
+  it("ships the three SPEC 2.1 empty-provider strings in every locale", () => {
+    const english = readLocale("en");
+    expect(english.providerPlaceholder).toBe("Select a provider");
+    expect(english.providerRequiredForModel).toBe("Select a provider first");
+    expect(english.providerRequiredError).toBe("Choose an AI provider in settings before translating.");
+    const simplified = readLocale("zh_CN");
+    expect(simplified.providerPlaceholder).toBe("请选择 AI 提供商");
+    expect(simplified.providerRequiredForModel).toBe("请先选择提供商");
+    expect(simplified.providerRequiredError).toBe("翻译前请先在设置中选择 AI 提供商。");
+    for (const code of LOCALES) {
+      const dict = readLocale(code);
+      for (const key of ["providerPlaceholder", "providerRequiredForModel", "providerRequiredError"]) {
+        expect(typeof dict[key], code + " " + key).toBe("string");
+        expect(dict[key].trim().length, code + " " + key).toBeGreaterThan(0);
+      }
+    }
+    // The other 35 locales are machine-translated: no locale may still be a copy of English.
+    const untranslated = LOCALES.filter((code) => {
+      if (code === "en") return false;
+      const dict = readLocale(code);
+      return ["providerPlaceholder", "providerRequiredForModel", "providerRequiredError"].some(
+        (key) => dict[key] === english[key]
+      );
+    });
+    expect(untranslated).toEqual([]);
+  });
 });
 
 describe("i18n runtime", () => {

@@ -1,11 +1,13 @@
 {
-  "spec": "2.0.0",
+  "spec": "2.1.0",
   "host": "dualtran-zotero",
   "payload": "tests/conformance.test.js",
   "static": {
     "files": [
       "content/preferences.xhtml",
-      "content/preferences.js"
+      "content/preferences.js",
+      "content/translate.js",
+      "bootstrap.js"
     ],
     "patterns": [
       "providerSeparator",

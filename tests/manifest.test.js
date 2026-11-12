@@ -79,10 +79,30 @@ describe("Zotero manifest", () => {
         "extensions.zotero.dualtran.apiKey",
         "extensions.zotero.dualtran.model",
         "extensions.zotero.dualtran.timeout",
+        "extensions.zotero.dualtran.aiProvider",
+        "extensions.zotero.dualtran.aiBaseUrl",
+        "extensions.zotero.dualtran.aiModel",
+        "extensions.zotero.dualtran.aiReasoningDepth",
       ])
     );
     for (const name of names) {
       expect(name.startsWith("extensions.zotero.dualtran.")).toBe(true);
+    }
+  });
+
+  it("ships an unconfigured AI provider default, never an OpenAI endpoint or model", () => {
+    const prefs = readFileSync(resolve(root, "prefs.js"), "utf8");
+    const entries = new Map();
+    for (const match of prefs.matchAll(/^pref\("([^"]+)",\s*(.*)\);\s*$/gm)) {
+      entries.set(match[1], match[2]);
+    }
+    expect(entries.get("extensions.zotero.dualtran.aiProvider")).toBe('""');
+    expect(entries.get("extensions.zotero.dualtran.aiBaseUrl")).toBe('""');
+    expect(entries.get("extensions.zotero.dualtran.aiModel")).toBe('""');
+    expect(entries.get("extensions.zotero.dualtran.aiReasoningDepth")).toBe('"lowest"');
+    // No OpenAI surface in the defaults a fresh profile starts from.
+    for (const [name, value] of entries) {
+      expect(value, name).not.toMatch(/openai|api\.openai\.com|gpt-/i);
     }
   });
 });

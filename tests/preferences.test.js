@@ -36,7 +36,8 @@ class StubElement {
     this.children = [];
     this.attributes = {};
     this.listeners = {};
-    this.value = "";
+    this._value = "";
+    this.selected = false;
     this.textContent = "";
     this.disabled = false;
   }
@@ -48,9 +49,21 @@ class StubElement {
     if (this.tagName === "SELECT" && this.children.length === 1) this.value = child.value;
     return child;
   }
+  set value(next) {
+    this._value = String(next);
+    // A real <select> moves the selection with its value; the stub must do the same or
+    // `option.selected`/`option:checked` readers silently lie.
+    for (const child of this.children) child.selected = child.getAttribute("value") === String(next);
+  }
+  get value() {
+    return this._value === undefined ? "" : this._value;
+  }
   removeChild(child) {
     this.children = this.children.filter((entry) => entry !== child);
     return child;
+  }
+  removeAttribute(name) {
+    delete this.attributes[name];
   }
   setAttribute(name, value) {
     this.attributes[name] = String(value);
@@ -302,6 +315,108 @@ describe("mounted pane", () => {
     expect(target.text()[0]).toMatch(/^(.+) \((.+)\)$/);
   });
 
+  it("starts a fresh profile on an empty, selected, disabled provider placeholder", async () => {
+    const { doc, io } = await open();
+    const provider = doc.getElementById("provider");
+    expect(provider.value).toBe("");
+    expect(provider.children[0].getAttribute("value")).toBe("");
+    expect(provider.children[0].getAttribute("disabled")).toBe("true");
+    expect(provider.children[0].textContent).toBe(EN.providerPlaceholder);
+    expect(provider.children[0].getAttribute("selected")).toBe("true");
+    // The placeholder is not a real option: every other row is a selectable provider.
+    for (const option of provider.children.slice(1)) {
+      expect(option.getAttribute("value")).not.toBe("");
+      expect(option.getAttribute("disabled")).toBeNull();
+    }
+    expect(provider.values()).not.toContain("__placeholder__");
+    expect(io.getPref(PREFIX + "aiProvider") ?? "").toBe("");
+  });
+
+  it("keeps the provider list alphabetical with the placeholder outside the sort", async () => {
+    const { doc } = await open();
+    const provider = doc.getElementById("provider");
+    const real = provider.children.slice(1);
+    expect(real[real.length - 1].getAttribute("value")).toBe("custom");
+    const names = real
+      .filter((option) => option.getAttribute("value") !== "custom")
+      .map((option) => option.textContent);
+    const compare = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+    expect(names.slice().sort(compare.compare)).toEqual(names);
+  });
+
+  it("disables the model and reasoning pickers and empties the endpoint while unconfigured", async () => {
+    const { doc } = await open();
+    const model = doc.getElementById("model");
+    expect(model.disabled).toBe(true);
+    expect(model.children).toEqual([]);
+    expect(doc.getElementById("reasoning").disabled).toBe(true);
+    // The stored sentinel is untouched; only the control is disabled.
+    expect(doc.getElementById("reasoning").value).toBe("lowest");
+    const endpoint = doc.getElementById("endpoint");
+    expect(endpoint.value).toBe("");
+    expect(endpoint.getAttribute("placeholder")).toBe("https://");
+  });
+
+  it("never shows the OpenAI endpoint or model in the unconfigured state", async () => {
+    const { doc } = await open();
+    expect(doc.getElementById("endpoint").value).not.toMatch(/openai/i);
+    expect(doc.getElementById("model").values()).not.toContain("gpt-4o");
+    expect(doc.getElementById("model").values()).toEqual([]);
+  });
+
+  it("enables the whole cascade when a provider is chosen from the empty state", async () => {
+    const { doc, io } = await open();
+    const provider = doc.getElementById("provider");
+    provider.value = "anthropic";
+    provider.fire("change");
+    const model = doc.getElementById("model");
+    expect(model.disabled).toBe(false);
+    expect(model.values().length).toBeGreaterThan(1);
+    expect(doc.getElementById("reasoning").disabled).toBe(false);
+    expect(doc.getElementById("endpoint").value).toBe("https://api.anthropic.com/v1");
+    expect(io.getPref(PREFIX + "aiProvider")).toBe("anthropic");
+    expect(io.getPref(PREFIX + "aiBaseUrl")).toBe("https://api.anthropic.com/v1");
+    expect(io.getPref(PREFIX + "aiModel")).toBe(model.value);
+    // The placeholder can never be selected again, so the pane cannot go back to empty.
+    expect(provider.children[0].getAttribute("disabled")).toBe("true");
+    expect(provider.children.slice(1).map((option) => option.getAttribute("value"))).not.toContain("");
+  });
+
+  it("does not overwrite an endpoint the user edited before choosing a provider", async () => {
+    const { doc, io } = await open();
+    const endpoint = doc.getElementById("endpoint");
+    endpoint.value = "https://proxy.example/v1";
+    endpoint.fire("change");
+    const provider = doc.getElementById("provider");
+    provider.value = "anthropic";
+    provider.fire("change");
+    expect(endpoint.value).toBe("https://proxy.example/v1");
+    expect(io.getPref(PREFIX + "aiBaseUrl")).toBe("https://proxy.example/v1");
+  });
+
+  it("renders a stored provider, model and endpoint on start", async () => {
+    const { doc } = await open({
+      prefs: {
+        [PREFIX + "aiProvider"]: "deepseek",
+        [PREFIX + "aiModel"]: "deepseek-v4-flash",
+        [PREFIX + "aiBaseUrl"]: "https://api.deepseek.com",
+      },
+    });
+    expect(doc.getElementById("provider").value).toBe("deepseek");
+    expect(doc.getElementById("provider").children[0].getAttribute("selected")).toBeNull();
+    expect(doc.getElementById("model").disabled).toBe(false);
+    expect(doc.getElementById("model").value).toBe("deepseek-v4-flash");
+    expect(doc.getElementById("reasoning").disabled).toBe(false);
+    expect(doc.getElementById("endpoint").value).toBe("https://api.deepseek.com");
+  });
+
+  it("never rewrites a stored provider the catalogue does not list", async () => {
+    const { doc, io } = await open({ prefs: { [PREFIX + "aiProvider"]: "retired-provider" } });
+    expect(doc.getElementById("provider").value).toBe("retired-provider");
+    expect(io.getPref(PREFIX + "aiProvider")).toBe("retired-provider");
+    expect(doc.getElementById("model").disabled).toBe(false);
+  });
+
   it("renders one alphabetical provider list with the custom provider last", async () => {
     const { doc } = await open();
     const provider = doc.getElementById("provider");
@@ -363,7 +478,7 @@ describe("mounted pane", () => {
   });
 
   it("offers only the sentinel for a model that declares no reasoning", async () => {
-    const { doc } = await open();
+    const { doc } = await open({ prefs: { [PREFIX + "aiProvider"]: "openai" } });
     const model = doc.getElementById("model");
     const values = model.values();
     expect(values).toContain("gpt-4o");
@@ -472,7 +587,9 @@ describe("start()", () => {
     expect(doc.getElementById("target").children.length).toBeGreaterThanOrEqual(38);
     expect(doc.getElementById("provider").children.length).toBeGreaterThan(5);
     expect(doc.getElementById("provider").children.at(-1).getAttribute("value")).toBe("custom");
-    expect(doc.getElementById("endpoint").value).toBe("https://api.openai.com/v1");
+    // SPEC 2.1: a fresh profile is unconfigured, not silently pointed at OpenAI.
+    expect(doc.getElementById("provider").value).toBe("");
+    expect(doc.getElementById("endpoint").value).toBe("");
   });
 
   it("maps Zotero's pt-BR locale onto locales/pt_BR.json", async () => {

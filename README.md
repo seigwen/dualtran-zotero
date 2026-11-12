@@ -78,25 +78,33 @@ up, no restart needed.
 | --- | --- | --- |
 | `engine` | `google` | `google` or `ai`. Any other value is rejected with an error. |
 | `target` | `zh-CN` | Target language code passed to the engine (`en`, `ja`, `de`, …). |
-| `endpoint` | `https://api.openai.com/v1` | Base URL of the AI endpoint. |
+| `aiProvider` | empty | Provider id chosen in the pane (`anthropic`, `deepseek`, …). **Empty means unconfigured**: an AI translation is refused with “Choose an AI provider in settings before translating.” and no request is sent. |
+| `aiBaseUrl` | empty | Base URL of the AI endpoint. Filled in from the chosen provider; edit it for a proxy or a self-hosted server. |
+| `aiModel` | empty | Model id sent to the AI endpoint. |
+| `aiReasoningDepth` | `lowest` | Reasoning effort. `lowest` resolves per model to `none` → `minimal` → `low`; a model that declares none gets no parameter. |
 | `apiKey` | empty | Bearer token for the AI endpoint. Leave empty for local servers. |
-| `model` | `gpt-4o-mini` | Model id sent to the AI endpoint. |
 | `timeout` | `120000` | Request timeout in milliseconds. |
 
-`endpoint` accepts `https://api.openai.com/v1`, `https://api.deepseek.com`,
+The legacy `endpoint` / `model` keys are still read as a fallback for settings written by 0.2.x.
+
+`aiBaseUrl` accepts `https://api.openai.com/v1`, `https://api.deepseek.com`,
 `http://127.0.0.1:11434/v1`, or a full `…/chat/completions` URL. A URL ending in `/v1` gets
 `/chat/completions` appended; a bare host gets `/v1/chat/completions`.
 
-Examples:
+A fresh install has **no** AI provider: the preference pane shows “Select a provider” and the
+model and reasoning controls stay disabled until you choose one. Nothing is ever translated
+through a provider you did not pick.
 
-| Provider | `endpoint` | `model` | `apiKey` |
+Examples (the pane fills `aiBaseUrl` in for you):
+
+| Provider | `aiBaseUrl` | `aiModel` | `apiKey` |
 | --- | --- | --- | --- |
-| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | required |
-| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` | required |
+| OpenAI | `https://api.openai.com/v1` | e.g. `gpt-4o-mini` | required |
+| DeepSeek | `https://api.deepseek.com` | `deepseek-chat` | required |
 | OpenRouter | `https://openrouter.ai/api/v1` | e.g. `anthropic/claude-3.5-sonnet` | required |
 | Ollama (local) | `http://127.0.0.1:11434/v1` | a model you have pulled | empty |
 
-Set `engine` to `ai` after filling in the endpoint, key and model.
+Set `engine` to `ai` after choosing a provider in the pane.
 
 ### Upgrading from 0.1.x
 
