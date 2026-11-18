@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <!--
   DualTran preference pane body (Zotero 7+).
 
@@ -13,7 +12,9 @@
 <vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
       xmlns:html="http://www.w3.org/1999/xhtml"
       id="dualtran-preferences"
-      class="main-section">
+      class="main-section"
+      onload="event.waitUntil(DualTranPreferences.start(window))"
+      onunload="DualTranPreferences.unmount(window)">
 
   <html:h1 class="dualtran-heading" data-i18n="pref.title">DualTran</html:h1>
 

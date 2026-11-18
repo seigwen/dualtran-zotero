@@ -580,7 +580,18 @@ function statusText(t, state) {
     return mount(window.document, io, { t: (key, params) => i18n.t(key, params) });
   }
 
+  /** Detach window-level listeners; Zotero fires this when the pane is torn down. */
+  function unmount(win) {
+    const window = win || root;
+    try {
+      if (window && window.DualTranPreferences === api) delete window.DualTranPreferences;
+    } catch (error) {
+      // A sandbox window may be sealed during shutdown; nothing to do.
+    }
+  }
+
   const api = {
+    unmount: unmount,
     PREF_PREFIX: PREF_PREFIX,
     PREFS: PREFS,
     LEGACY: LEGACY,
@@ -608,6 +619,14 @@ function statusText(t, state) {
     start: start,
   };
 
+  // Publish on the preferences *window*, not the sandbox global: Zotero fires the
+  // fragment root's onload handler from the window scope, and a sandbox-local name is
+  // invisible there. Without this the pane appears in the sidebar and never renders.
   root.DualTranPreferences = api;
+  try {
+    if (typeof window !== "undefined" && window) window.DualTranPreferences = api;
+  } catch (error) {
+    // No window (unit tests): the sandbox/global export above is all the tests need.
+  }
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
