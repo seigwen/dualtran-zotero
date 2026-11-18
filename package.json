@@ -1,6 +1,6 @@
 {
   "name": "dualtran-zotero",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Zotero add-on that translates an item's title and abstract into a child note, keeping the source.",
   "main": "bootstrap.js",
   "directories": {

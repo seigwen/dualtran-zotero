@@ -637,23 +637,30 @@ async function runReaderAction(button, mode, reader, attachment, annotation) {
 /* ------------------------------------------------------------- preference pane */
 
 /** Zotero 7 registers plugin preference panes through this API; 6 had no equivalent. */
-const PANE_ID = "dualtran@seigwen";
 const PANE_SCRIPTS = [
   "content/catalog.js",
   "content/languages.js",
   "content/preferences.js",
 ];
 
-function installPreferencePane(rootURI) {
+/**
+ * @param {string} rootURI
+ * @param {string} pluginID the add-on id Zotero booted us with — the pane must be keyed by
+ *   exactly that, or Zotero files the pane under a plugin that does not exist and Settings
+ *   never shows it. Reading it from the manifest by hand is how this shipped broken once.
+ * @returns {Promise<boolean>}
+ */
+async function installPreferencePane(rootURI, pluginID) {
   if (!Zotero.PreferencePanes || typeof Zotero.PreferencePanes.register !== "function") {
     log("no PreferencePanes API in this Zotero; the pane is unavailable");
     return false;
   }
   try {
-    Zotero.PreferencePanes.register({
-      // Not PLUGIN_ID: manifest.json registers the add-on as dualtran@seigwen.dev, but the pane
-      // is keyed by the documented add-on id the product spec names (dualtran@seigwen).
-      pluginID: PANE_ID,
+    // register() is async: it resolves to the pane's promise. Not awaiting it meant the
+    // "registered" log line was written before the promise could reject, which is why a
+    // permanently missing pane looked like a success in the logs.
+    await Zotero.PreferencePanes.register({
+      pluginID: pluginID,
       src: rootURI + "content/preferences.xhtml",
       label: "DualTran",
       image: rootURI + "icons/dualtran.svg",
@@ -661,18 +668,20 @@ function installPreferencePane(rootURI) {
         return rootURI + path;
       }),
     });
-    log("preference pane registered");
+    if (!pluginID) throw new Error("no add-on id was passed to startup()");
+    log("preference pane registered for " + pluginID);
     return true;
   } catch (error) {
-    log("preference pane registration failed: " + errorMessage(error));
+    // Error level, not a plain log: a missing pane is a user-visible feature loss.
+    log("preference pane registration FAILED for " + pluginID + ": " + errorMessage(error));
     return false;
   }
 }
 
-function uninstallPreferencePane() {
+function uninstallPreferencePane(pluginID) {
   try {
     if (Zotero.PreferencePanes && typeof Zotero.PreferencePanes.unregister === "function") {
-      Zotero.PreferencePanes.unregister(PANE_ID);
+      Zotero.PreferencePanes.unregister(pluginID);
       log("preference pane unregistered");
     }
   } catch (error) {
@@ -703,7 +712,7 @@ async function startup({ id, version, rootURI }) {
     log("pref migration failed: " + errorMessage(error));
   }
 
-  installPreferencePane(rootURI);
+  await installPreferencePane(rootURI, id);
 
   log("starting " + id + " " + version + " locale=" + Zotero.locale);
   for (const win of Zotero.getMainWindows()) installMenu(win);
@@ -714,7 +723,7 @@ async function startup({ id, version, rootURI }) {
 function shutdown({ id, version, rootURI }, reason) {
   stopWindowObserver();
   removeReaderListener();
-  uninstallPreferencePane();
+  uninstallPreferencePane(id);
   if (reason === APP_SHUTDOWN) return;
   for (const win of Zotero.getMainWindows()) removeMenu(win);
   log("shutdown");
